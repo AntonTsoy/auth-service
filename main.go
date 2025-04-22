@@ -232,6 +232,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	h.tokenRepo.RevokeRefreshToken(tokenData.ID)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens refreshed successfully",
 	})
