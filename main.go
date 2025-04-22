@@ -224,7 +224,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	tokenData, err := h.tokenRepo.ValidateToken(refreshToken, clientIP)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
