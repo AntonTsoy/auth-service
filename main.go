@@ -59,9 +59,7 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	clientIP := c.ClientIP()
-	accessID := uuid.New()
-	accessToken, err := generateAccessToken(userGUID, accessID, clientIP, 5*time.Minute)
+	accessToken, err := generateAccessToken(userGUID, uuid.New(), c.ClientIP(), 5*time.Minute)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
 		return
@@ -72,9 +70,11 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
+	c.SetCookie("access_token", accessToken, 5*60, "/", "", true, true)
+	c.SetCookie("refresh_token", refreshToken, 20*60, "/", "", true, true)
+
 	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
+		"message": "Tokens issued successfully",
 	})
 }
 
