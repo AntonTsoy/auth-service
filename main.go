@@ -82,7 +82,7 @@ type RefreshToken struct {
 func (r *TokenRepository) ValidateToken(token string, clientIP string) (*RefreshToken, error) {
 	var rt RefreshToken
 
-	query := "SELECT user_id, access_id, token_hash, client_ip, issued_at, revoked FROM refresh_tokens WHERE revoked = false"
+	query := "SELECT id, user_id, access_id, token_hash, client_ip, issued_at, revoked FROM refresh_tokens WHERE revoked = false"
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
