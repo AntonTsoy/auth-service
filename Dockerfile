@@ -1,4 +1,4 @@
-FROM golang:1.23.8-nanoserver
+FROM golang:1.23.8-alpine
 WORKDIR /app
 COPY . .
 RUN go build -o auth-service ./
