@@ -6,20 +6,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-)
-
-// TODO: НЕ ЗАБУДЬ ВЫНЕСТИ В КОНФИГ!!!
-var (
-	JWTSecret                 = []byte("c9029183bc75a4ad92bf44e5e7cd03adf071615708ffef5904615e6a82b2826e15c06ed084cbbdf6833663ed7f3c68f7854948a39d850612c3d9c25061c8bfb9a918134d8f30109fe68c9104a89eefcf76582e91ff9dd6fc75458f944aab91ae81c0667e953702b768fae1b4036059729dae906343e0d7ecba173d942cd55552aeeaa34c566e1716a7c7c9338fbde787e8de0fb74755a5e3507cb9ad703864351e1ccb0bd5a183a1d23990f94d2411586315a72d444ce86920916d4136a70318164ef3c557f7037f517b30f3a7e9ec9885814edc380acc25382752af1b3f5234e973e03c61ae26d39d2bd72c486bcdde3fe647cc58fbc81e1f610b3b6286e94e")
-	access_token_minutes_ttl  = 5
-	refresh_token_minutes_ttl = 20
 )
 
 func initDB() (*sql.DB, error) {
@@ -62,7 +58,7 @@ func generateAccessToken(userID uuid.UUID, accessID uuid.UUID, clientIP string, 
 		"exp":       time.Now().Add(ttl).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
-	return token.SignedString(JWTSecret)
+	return token.SignedString(os.Getenv("JWT_SECRET"))
 }
 
 func generateRefreshToken() (string, error) {
@@ -94,8 +90,9 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
+	access_token_ttl, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_MINUTES_TTL"))
 	accessToken, err := generateAccessToken(
-		userGUID, uuid.New(), c.ClientIP(), time.Duration(access_token_minutes_ttl)*time.Minute,
+		userGUID, uuid.New(), c.ClientIP(), time.Duration(access_token_ttl)*time.Minute,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
@@ -107,8 +104,9 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", accessToken, access_token_minutes_ttl*60, "/", "", false, true)
-	c.SetCookie("refresh_token", refreshToken, refresh_token_minutes_ttl*60, "/", "", false, true)
+	refresh_token_ttl, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_MINUTES_TTL"))
+	c.SetCookie("refresh_token", refreshToken, refresh_token_ttl*60, "/", "", false, true)
+	c.SetCookie("access_token", accessToken, access_token_ttl*60, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens issued successfully",
@@ -116,6 +114,10 @@ func getUserTokens(c *gin.Context) {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		panic(err)
+	}
+
 	db, err := initDB()
 	if err != nil {
 		panic(err)
