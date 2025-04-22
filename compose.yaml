@@ -9,6 +9,13 @@ services:
     container_name: auth-service-db
     ports:
       - "5432:5432"
+    healthcheck:
+      test: "pg_isready -U service -d auth"
+      interval: 3s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    restart: always
     networks:
       - dev
   app:
@@ -17,6 +24,7 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - dev
