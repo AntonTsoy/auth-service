@@ -147,11 +147,6 @@ func hashRefreshToken(refreshToken string) (string, error) {
 	return string(hashedToken), nil
 }
 
-func validateRefreshToken(storedHash, refreshToken string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(refreshToken))
-	return err == nil
-}
-
 type AuthHandler struct {
 	tokenRepo *TokenRepository
 }
