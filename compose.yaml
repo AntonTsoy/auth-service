@@ -1,0 +1,21 @@
+name: auth-service
+
+networks:
+  dev:
+
+services:
+  db:
+    image: postgres:17.0-alpine
+    container_name: 
+    ports:
+      - "5432:5432"
+    networks:
+      - dev
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    networks:
+      - dev

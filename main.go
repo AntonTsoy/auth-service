@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -19,6 +21,33 @@ var (
 	access_token_minutes_ttl  = 5
 	refresh_token_minutes_ttl = 20
 )
+
+func initDB() (*sql.DB, error) {
+	connStr := "host=db port=5432 user=service password=password1234 dbname=auth sslmode=disable"
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
+
+	if err = db.Ping(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+type TokenRepository struct {
+	db *sql.DB
+}
+
+func NewUserRepository(db *sql.DB) *TokenRepository {
+	return &TokenRepository{db: db}
+}
 
 func sendEmailWarning(newIPAddress string) {
 	time.Sleep(5 * time.Second)
@@ -87,6 +116,12 @@ func getUserTokens(c *gin.Context) {
 }
 
 func main() {
+	db, err := initDB()
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
 	router := gin.Default()
 	router.GET("/tokens", getUserTokens)
 	router.Run()
