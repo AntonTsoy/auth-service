@@ -16,6 +16,8 @@ services:
       start_period: 5s
       retries: 3
     restart: always
+    volumes:
+      - pgdata:/var/lib/postgresql/data 
     networks:
       - dev
   app:
@@ -28,3 +30,6 @@ services:
         condition: service_healthy
     networks:
       - dev
+
+volumes:
+  pgdata:
