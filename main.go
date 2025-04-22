@@ -13,9 +13,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var JWTSecret []byte = []byte("Надо это вынести в конфиг")
+// TODO: НЕ ЗАБУДЬ ВЫНЕСТИ В КОНФИГ!!!
+var (
+	JWTSecret                 = []byte("Надо это вынести в конфиг")
+	access_token_minutes_ttl  = 5
+	refresh_token_minutes_ttl = 20
+)
 
 func sendEmailWarning(newIPAddress string) {
+	time.Sleep(5 * time.Second)
 	fmt.Printf("Email notification! Warning: IP address changed to %s.\n", newIPAddress)
 }
 
@@ -59,7 +65,9 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	accessToken, err := generateAccessToken(userGUID, uuid.New(), c.ClientIP(), 5*time.Minute)
+	accessToken, err := generateAccessToken(
+		userGUID, uuid.New(), c.ClientIP(), time.Duration(access_token_minutes_ttl)*time.Minute,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
 		return
@@ -70,8 +78,8 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", accessToken, 5*60, "/", "", true, true)
-	c.SetCookie("refresh_token", refreshToken, 20*60, "/", "", true, true)
+	c.SetCookie("access_token", accessToken, access_token_minutes_ttl*60, "/", "", true, true)
+	c.SetCookie("refresh_token", refreshToken, refresh_token_minutes_ttl*60, "/", "", true, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens issued successfully",
