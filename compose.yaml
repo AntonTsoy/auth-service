@@ -6,12 +6,13 @@ networks:
 services:
   db:
     image: postgres:17.0-alpine
-    container_name: 
+    container_name: auth-service-db
     ports:
       - "5432:5432"
     networks:
       - dev
   app:
+    container_name: auth-service-app
     build: .
     ports:
       - "8080:8080"
