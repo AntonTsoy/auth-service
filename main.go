@@ -34,6 +34,21 @@ func initDB() (*sql.DB, error) {
 		return nil, err
 	}
 
+	query := `
+	CREATE TABLE IF NOT EXISTS refresh_tokens (
+		id UUID PRIMARY KEY,
+		user_id UUID NOT NULL,
+		access_id UUID NOT NULL,
+		token_hash TEXT NOT NULL,
+		client_ip VARCHAR(45) NOT NULL,
+		issued_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+		revoked BOOLEAN DEFAULT FALSE
+	);
+	`
+	if _, err := db.Exec(query); err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -41,8 +56,27 @@ type TokenRepository struct {
 	db *sql.DB
 }
 
-func NewUserRepository(db *sql.DB) *TokenRepository {
+func NewTokenRepository(db *sql.DB) *TokenRepository {
 	return &TokenRepository{db: db}
+}
+
+func (r *TokenRepository) SaveToken(userID, accessID uuid.UUID, hash string, clientIP string) error {
+	_, err := r.db.Exec(`
+		INSERT INTO refresh_tokens (id, user_id, access_id, token_hash, client_ip, issued_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		uuid.New(), userID, accessID, hash, clientIP, time.Now(),
+	)
+	return err
+}
+
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	AccessID  uuid.UUID
+	TokenHash string
+	ClientIP  string
+	IssuedAt  time.Time
+	Revoked   bool
 }
 
 func sendEmailWarning(newIPAddress string) {
@@ -82,7 +116,15 @@ func validateRefreshToken(storedHash, refreshToken string) bool {
 	return err == nil
 }
 
-func getUserTokens(c *gin.Context) {
+type AuthHandler struct {
+	tokenRepo *TokenRepository
+}
+
+func NewAuthHandler(tokenRepo *TokenRepository) *AuthHandler {
+	return &AuthHandler{tokenRepo: tokenRepo}
+}
+
+func (h *AuthHandler) GetUserTokens(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	userGUID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -90,9 +132,11 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
+	accessID := uuid.New()
+	clientIP := c.ClientIP()
 	accessTokenTTL, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_MINUTES_TTL"))
 	accessToken, err := generateAccessToken(
-		userGUID, uuid.New(), c.ClientIP(), time.Duration(accessTokenTTL)*time.Minute,
+		userGUID, accessID, clientIP, time.Duration(accessTokenTTL)*time.Minute,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
@@ -103,6 +147,17 @@ func getUserTokens(c *gin.Context) {
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate refresh token"})
+		return
+	}
+	refreshHash, err := hashRefreshToken(refreshToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot save refresh token"})
+		return
+	}
+
+	err = h.tokenRepo.SaveToken(userGUID, accessID, refreshHash, clientIP)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot save refresh token"})
 		return
 	}
 
@@ -126,7 +181,10 @@ func main() {
 	}
 	defer db.Close()
 
+	tokenRepo := NewTokenRepository(db)
+	authHandler := NewAuthHandler(tokenRepo)
+
 	router := gin.Default()
-	router.GET("/tokens", getUserTokens)
+	router.GET("/tokens", authHandler.GetUserTokens)
 	router.Run()
 }
