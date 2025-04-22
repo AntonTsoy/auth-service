@@ -7,6 +7,7 @@ services:
   db:
     image: postgres:17.0-alpine
     container_name: auth-service-db
+    env_file: ./postgres.env
     ports:
       - "5432:5432"
     healthcheck:
