@@ -58,7 +58,7 @@ func generateAccessToken(userID uuid.UUID, accessID uuid.UUID, clientIP string, 
 		"exp":       time.Now().Add(ttl).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
-	return token.SignedString(os.Getenv("JWT_SECRET"))
+	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
 func generateRefreshToken() (string, error) {
@@ -90,12 +90,14 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	access_token_ttl, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_MINUTES_TTL"))
+	accessTokenTTL, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_MINUTES_TTL"))
 	accessToken, err := generateAccessToken(
-		userGUID, uuid.New(), c.ClientIP(), time.Duration(access_token_ttl)*time.Minute,
+		userGUID, uuid.New(), c.ClientIP(), time.Duration(accessTokenTTL)*time.Minute,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
+		fmt.Println(accessTokenTTL)
+		fmt.Println(err)
 		return
 	}
 	refreshToken, err := generateRefreshToken()
@@ -104,9 +106,9 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	refresh_token_ttl, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_MINUTES_TTL"))
-	c.SetCookie("refresh_token", refreshToken, refresh_token_ttl*60, "/", "", false, true)
-	c.SetCookie("access_token", accessToken, access_token_ttl*60, "/", "", false, true)
+	refreshTokenTTL, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_MINUTES_TTL"))
+	c.SetCookie("refresh_token", refreshToken, refreshTokenTTL*60, "/", "", false, true)
+	c.SetCookie("access_token", accessToken, accessTokenTTL*60, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens issued successfully",
