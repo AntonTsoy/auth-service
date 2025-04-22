@@ -107,8 +107,8 @@ func getUserTokens(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", accessToken, access_token_minutes_ttl*60, "/", "", true, true)
-	c.SetCookie("refresh_token", refreshToken, refresh_token_minutes_ttl*60, "/", "", true, true)
+	c.SetCookie("access_token", accessToken, access_token_minutes_ttl*60, "/", "", false, true)
+	c.SetCookie("refresh_token", refreshToken, refresh_token_minutes_ttl*60, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens issued successfully",
