@@ -79,6 +79,42 @@ type RefreshToken struct {
 	Revoked   bool
 }
 
+func (r *TokenRepository) ValidateToken(token string, clientIP string) (*RefreshToken, error) {
+	var rt RefreshToken
+
+	query := "SELECT user_id, access_id, token_hash, client_ip, issued_at, revoked FROM refresh_tokens WHERE revoked = false"
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		err := rows.Scan(&rt.ID, &rt.UserID, &rt.AccessID, &rt.TokenHash, &rt.ClientIP, &rt.IssuedAt, &rt.Revoked)
+		if err != nil {
+			return nil, err
+		}
+
+		if bcrypt.CompareHashAndPassword([]byte(rt.TokenHash), []byte(token)) == nil {
+			refreshTokenTTL, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_MINUTES_TTL"))
+			if rt.IssuedAt.Add(time.Duration(refreshTokenTTL) * time.Minute).Before(time.Now()) {
+				return nil, fmt.Errorf("expired refresh token")
+			}
+			if rt.ClientIP != clientIP {
+				go sendEmailWarning(clientIP)
+			}
+			return &rt, nil
+		}
+	}
+
+	return nil, fmt.Errorf("invalid or revoked refresh token")
+}
+
+func (r *TokenRepository) RevokeRefreshToken(id uuid.UUID) error {
+	_, err := r.db.Exec(`UPDATE refresh_tokens SET revoked = true WHERE id = $1`, id)
+	return err
+}
+
 func sendEmailWarning(newIPAddress string) {
 	time.Sleep(5 * time.Second)
 	fmt.Printf("Email notification! Warning: IP address changed to %s.\n", newIPAddress)
@@ -124,19 +160,10 @@ func NewAuthHandler(tokenRepo *TokenRepository) *AuthHandler {
 	return &AuthHandler{tokenRepo: tokenRepo}
 }
 
-func (h *AuthHandler) GetUserTokens(c *gin.Context) {
-	userIDStr := c.Query("user_id")
-	userGUID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user identificator"})
-		return
-	}
-
-	accessID := uuid.New()
-	clientIP := c.ClientIP()
+func createTokensPair(userID, accessID uuid.UUID, clientIP string, tokenRepo *TokenRepository, c *gin.Context) (err error) {
 	accessTokenTTL, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_MINUTES_TTL"))
 	accessToken, err := generateAccessToken(
-		userGUID, accessID, clientIP, time.Duration(accessTokenTTL)*time.Minute,
+		userID, accessID, clientIP, time.Duration(accessTokenTTL)*time.Minute,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
@@ -155,7 +182,7 @@ func (h *AuthHandler) GetUserTokens(c *gin.Context) {
 		return
 	}
 
-	err = h.tokenRepo.SaveToken(userGUID, accessID, refreshHash, clientIP)
+	err = tokenRepo.SaveToken(userID, accessID, refreshHash, clientIP)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot save refresh token"})
 		return
@@ -164,9 +191,49 @@ func (h *AuthHandler) GetUserTokens(c *gin.Context) {
 	refreshTokenTTL, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_MINUTES_TTL"))
 	c.SetCookie("refresh_token", refreshToken, refreshTokenTTL*60, "/", "", false, true)
 	c.SetCookie("access_token", accessToken, accessTokenTTL*60, "/", "", false, true)
+	return
+}
+
+func (h *AuthHandler) GetUserTokens(c *gin.Context) {
+	userIDStr := c.Query("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user identificator"})
+		return
+	}
+
+	accessID := uuid.New()
+	clientIP := c.ClientIP()
+	if createTokensPair(userID, accessID, clientIP, h.tokenRepo, c) != nil {
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tokens issued successfully",
+	})
+}
+
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "refresh_token missing"})
+		return
+	}
+
+	clientIP := c.ClientIP()
+
+	tokenData, err := h.tokenRepo.ValidateToken(refreshToken, clientIP)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+
+	if createTokensPair(tokenData.UserID, tokenData.AccessID, clientIP, h.tokenRepo, c) != nil {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Tokens refreshed successfully",
 	})
 }
 
@@ -185,6 +252,7 @@ func main() {
 	authHandler := NewAuthHandler(tokenRepo)
 
 	router := gin.Default()
-	router.GET("/tokens", authHandler.GetUserTokens)
+	router.GET("/auth/tokens", authHandler.GetUserTokens)
+	router.GET("/auth/refresh", authHandler.RefreshToken)
 	router.Run()
 }
