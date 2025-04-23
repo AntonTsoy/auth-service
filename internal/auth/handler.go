@@ -44,7 +44,7 @@ func (h *AuthHandler) GetUserTokens(c *gin.Context) {
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "refresh_token missing"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
