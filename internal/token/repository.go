@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/AntonTsoy/auth-service/internal/email"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -27,7 +26,7 @@ func (r *TokenRepository) SaveToken(userID, accessID uuid.UUID, hash string, cli
 	return err
 }
 
-func (r *TokenRepository) ValidateToken(token string, clientIP string, refreshTTL int) (*RefreshToken, error) {
+func (r *TokenRepository) FindToken(token string) (*RefreshToken, error) {
 	var rt RefreshToken
 
 	query := "SELECT id, user_id, access_id, token_hash, client_ip, issued_at, revoked FROM refresh_tokens WHERE revoked = false"
@@ -42,14 +41,7 @@ func (r *TokenRepository) ValidateToken(token string, clientIP string, refreshTT
 		if err != nil {
 			return nil, err
 		}
-
 		if bcrypt.CompareHashAndPassword([]byte(rt.TokenHash), []byte(token)) == nil {
-			if rt.IssuedAt.Add(time.Duration(refreshTTL) * time.Minute).Before(time.Now()) {
-				return nil, fmt.Errorf("expired refresh token")
-			}
-			if rt.ClientIP != clientIP {
-				go email.SendEmailWarning(clientIP)
-			}
 			return &rt, nil
 		}
 	}

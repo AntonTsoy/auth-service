@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AntonTsoy/auth-service/internal/email"
 	"github.com/AntonTsoy/auth-service/internal/token"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -49,10 +50,17 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	clientIP := c.ClientIP()
 
-	tokenData, err := h.tokenRepo.ValidateToken(refreshToken, clientIP, h.refreshTTL)
+	tokenData, err := h.tokenRepo.FindToken(refreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
+	}
+	if tokenData.IssuedAt.Add(time.Duration(h.refreshTTL) * time.Minute).Before(time.Now()) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "expired refresh token"})
+		return
+	}
+	if tokenData.ClientIP != clientIP {
+		go email.SendEmailWarning(clientIP)
 	}
 
 	if h.createTokensPair(tokenData.UserID, tokenData.AccessID, clientIP, c) != nil {
